@@ -6,8 +6,21 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "asyncio>=4.0.0",
+    "datetime>=6.0",
     "httpx>=0.28.1",
     "pathlib>=1.0.1",
     "requests>=2.32.5",
     "tqdm>=4.67.1",
 ]
+
+[dependency-groups]
+dev = [
+    "black>=25.12.0",
+    "pre-commit>=4.5.1",
+    "pytest>=9.0.2",
+    "ruff>=0.14.10",
+]
+
+[tool.pytest.ini_options]
+pythonpath = "."
+testpaths = ["tests"]
