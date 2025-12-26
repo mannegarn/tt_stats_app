@@ -18,9 +18,10 @@ from src.config import RAW_EVENTS_DIR
 current_year = datetime.now().year
 
 # 2021 is the earliest year where data is available from WTT API
-start_year = 2021
+start_year = 1926
 # scrape until the year after the current year
 end_year = current_year + 1
+end_year = 1966
 
 # all years = range(start_year, end_year
 all_years = list(range(start_year, end_year + 1))
