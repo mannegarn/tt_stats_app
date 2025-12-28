@@ -5,6 +5,7 @@ import time
 from typing import Tuple
 from datetime import datetime
 from tqdm.asyncio import tqdm
+from pathlib import Path
 
 
 sys.path.append(".")
@@ -33,7 +34,13 @@ years_to_scrape = [
 ]
 
 
-async def process_year(client, http_client, year, semaphore) -> Tuple[int, int]:
+async def process_year(
+    client: TTStatsClient,
+    http_client: httpx.AsyncClient,
+    year: int,
+    semaphore: asyncio.Semaphore,
+    output_dir: Path = RAW_EVENTS_DIR,
+) -> Tuple[int, int]:
     ### scrapes one year using sempahore and progress bar
 
     """
@@ -48,13 +55,15 @@ async def process_year(client, http_client, year, semaphore) -> Tuple[int, int]:
     Returns:
         Tuple[int, int]: A tuple containing the total number of events found and the number of new events added.
     """
+
+    print(f"\n🔹 [DEBUG] Starting process_year for {year}")  # PRINT 1
     async with semaphore:
         route = WTTRoutes.get_events_year_route(year)
 
         try:
 
             filename = f"events_{year}.json"
-            old_count = get_event_count_from_file(RAW_EVENTS_DIR, filename)
+            old_count = get_event_count_from_file(output_dir, filename)
 
             data = await client.post_wtt_async(
                 client=http_client,
@@ -63,14 +72,19 @@ async def process_year(client, http_client, year, semaphore) -> Tuple[int, int]:
                 headers=route["headers"],
             )
 
+            print(f"🔹 [DEBUG] Raw Data Type: {type(data)}")
+            print(f"🔹 [DEBUG] Raw Data Content: {data}")
+
             filename = f"events_{year}.json"
-            save_raw_json(data, RAW_EVENTS_DIR, filename)
+            save_raw_json(data, output_dir, filename)
 
             new_count = 0
             if isinstance(data, list) and len(data) > 0:
                 new_count = len(data[0].get("rows", []))
 
-            added = new_count - old_count
+            print(f"🔹 [DEBUG] Calculated new_count: {new_count}")
+
+            added = max(0, new_count - old_count)
             if added > 0:
                 status = "New file" if old_count == 0 else f"{added} new events"
                 tqdm.write(f"🟢 {year}: {status} (Total: {new_count})")
@@ -78,8 +92,9 @@ async def process_year(client, http_client, year, semaphore) -> Tuple[int, int]:
             return new_count, added
 
         except Exception as e:
+            print(f"\n🐛 DEBUG EXCEPTION: {type(e).__name__} :: {e}")
             tqdm.write(f"❌ Error on {year}: {e}")
-            return 0
+            return 0, 0
 
 
 async def run_event_scraper() -> None:

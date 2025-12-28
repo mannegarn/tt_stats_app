@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 
-def test_save_raw_json(tmp_path):
+def test_save_raw_json(tmp_path: Path):
     """
     Tests the save_raw_json function.
 
@@ -31,7 +31,7 @@ def test_save_raw_json(tmp_path):
         assert loaded_data == test_data
 
 
-def test_file_exists(tmp_path):
+def test_file_exists(tmp_path: Path):
     """
     Tests the file_exists function.
 
@@ -58,14 +58,16 @@ def test_file_exists(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "year_file, expected_count",
+    "filename, expected_count",
     [
         ("events_1926_count_1.json", 1),
         ("events_1927_count_0.json", 0),
         ("events_1933_count_2.json", 2),
     ],
 )
-def test_get_event_count_from_file(year_file, expected_count):
+def test_get_event_count_from_file(
+    events_by_year_fixtures_dir: Path, filename: str, expected_count: int
+):
     """
     Tests the get_event_count_from_file function by parameterizing different year files
     with their expected event counts.
@@ -73,12 +75,13 @@ def test_get_event_count_from_file(year_file, expected_count):
 
 
     Args:
+        events_by_yearfixtures (Path): The path to the directory containing the year files.
         year_file (str): The filename of the year file to test.
         expected_count (int): The expected number of events in the year file.
 
     Asserts:
         The function returns the correct number of events for each year file.
     """
-    path = Path("tests/fixtures/events_by_year") / year_file
-    count = get_event_count_from_file(path.parent, path.name)
+    count = get_event_count_from_file(events_by_year_fixtures_dir, filename)
+    print(events_by_year_fixtures_dir, filename)
     assert count == expected_count
