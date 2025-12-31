@@ -29,9 +29,9 @@ def save_raw_json(data: Any, folder: Path, filename: str) -> bool:
         return False
 
 
-def file_exists(folder: Path, filename: str) -> bool:
+def json_exists(folder: Path, filename: str) -> bool:
     """
-    Check if a file exists in a folder and is not empty.
+    Check if a file exists in a folder and is not empty and is a valid JSON file.
 
     Args:
         folder (Path): The folder to check in.
@@ -44,8 +44,12 @@ def file_exists(folder: Path, filename: str) -> bool:
     # Check if the file exists and is not empty
     if not filepath.exists() or filepath.stat().st_size == 0:
         return False
-    else:
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            json.load(f)
         return True
+    except (json.JSONDecodeError, IOError):
+        return False
 
 
 def get_event_count_from_file(folder: Path, filename: str) -> int:

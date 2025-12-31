@@ -5,7 +5,7 @@ from pathlib import Path
 # This has caused some issues with importing in other modules - not sure why
 
 # points to roots of project
-BASE_DIR = Path(__file__).parent.parent 
+BASE_DIR = Path(__file__).parent.parent
 
 # Data directories
 DATA_DIR = BASE_DIR / "data"
@@ -17,7 +17,15 @@ MASTER_DIR = DATA_DIR / "master"
 RAW_EVENTS_DIR = RAW_DIR / "events"
 RAW_MATCHES_DIR = RAW_DIR / "match_details"
 RAW_PLAYERS_DIR = RAW_DIR / "player_details"
+RAW_EVENT_MATCHES_DIR = RAW_DIR / "event_matches"
 
 # Ensure ALL directories exist when config is imported
-for directory in [RAW_EVENTS_DIR, RAW_MATCHES_DIR, RAW_PLAYERS_DIR, INTERMEDIATE_DIR, MASTER_DIR]:
+for directory in [
+    RAW_EVENTS_DIR,
+    RAW_MATCHES_DIR,
+    RAW_PLAYERS_DIR,
+    INTERMEDIATE_DIR,
+    MASTER_DIR,
+    RAW_EVENT_MATCHES_DIR,
+]:
     directory.mkdir(parents=True, exist_ok=True)

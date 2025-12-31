@@ -37,3 +37,9 @@ def wtt_api_mock():
     """
     with respx.mock(assert_all_called=False) as mock:
         yield mock
+
+
+@pytest.fixture
+def event_matches_fixtures_dir(fixtures_dir: Path) -> Path:
+    """Returns the path to the event_matches fixtures subdirectory."""
+    return fixtures_dir / "event_matches"

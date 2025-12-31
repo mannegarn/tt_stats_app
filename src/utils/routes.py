@@ -1,50 +1,90 @@
-import json 
-
-
+import json
+from typing import Union
 
 
 class WTTRoutes:
     # Use exact headers from CUrl copy.
     _BASE_HEADERS = {
-    'accept': 'application/json, text/plain, */*',
-    'accept-language': 'en-GB,en;q=0.9,es;q=0.8',
-    'cache-control': 'no-cache',
-    'content-type': 'application/json',
-    'dnt': '1',
-    'origin': 'https://www.worldtabletennis.com',
-    'pragma': 'no-cache',
-    'priority': 'u=1, i',
-    'referer': 'https://www.worldtabletennis.com/',
-    'sec-ch-ua': '"Chromium";v="140", "Not=A?Brand";v="24", "Google Chrome";v="140"',
-    'sec-ch-ua-mobile': '?1',
-    'sec-ch-ua-platform': '"Android"',
-    'sec-fetch-dest': 'empty',
-    'sec-fetch-mode': 'cors',
-    'sec-fetch-site': 'cross-site',       
-    'secapimkey': 'S_WTT_882jjh7basdj91834783mds8j2jsd81', 
-    'user-agent': 'Mozilla/5.0 (Linux; Android 11.0; Surface Duo) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36'
+        "accept": "application/json, text/plain, */*",
+        "accept-language": "en-GB,en;q=0.9,es;q=0.8",
+        "cache-control": "no-cache",
+        "content-type": "application/json",
+        "dnt": "1",
+        "origin": "https://www.worldtabletennis.com",
+        "pragma": "no-cache",
+        "priority": "u=1, i",
+        "referer": "https://www.worldtabletennis.com/",
+        "sec-ch-ua": '"Chromium";v="140", "Not=A?Brand";v="24", "Google Chrome";v="140"',
+        "sec-ch-ua-mobile": "?1",
+        "sec-ch-ua-platform": '"Android"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "cross-site",
+        "secapimkey": "S_WTT_882jjh7basdj91834783mds8j2jsd81",
+        "user-agent": "Mozilla/5.0 (Linux; Android 11.0; Surface Duo) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36",
     }
 
     @staticmethod
-    def get_events_year_route(year: int):
-        # returns the method, url, and payload and headers to fetch the events for a given year range
+    def get_events_year_route(year: Union[int, str]):
+        """# returns the method, url, and payload and headers to fetch the events for a given year range
         # found upon inspecting the WTT API request on this calendar page :
         # https://www.worldtabletennis.com/events_calendar
+        # The WTT API has a custom filter that allows you to filter by year.
+        Args:
+            year (Union[int, str]): The year to filter the events by.
 
-        url = "https://wtt-website-api-prod-3-frontdoor-bddnb2haduafdze9.a01.azurefd.net/api/eventcalendar" 
+        Returns:
+            dict: A dictionary containing the method, url, payload, and headers.
+        """
+
+        url = "https://wtt-website-api-prod-3-frontdoor-bddnb2haduafdze9.a01.azurefd.net/api/eventcalendar"
 
         inner_filter = [
-            {"name": "StartDateTime", "value": year, "custom_handling": "multimatch_year_or_filter", "condition": "or_start"},
-            {"name": "FromStartDate", "value": year, "custom_handling": "multimatch_year_or_filter", "condition": "or_end"}
+            {
+                "name": "StartDateTime",
+                "value": year,
+                "custom_handling": "multimatch_year_or_filter",
+                "condition": "or_start",
+            },
+            {
+                "name": "FromStartDate",
+                "value": year,
+                "custom_handling": "multimatch_year_or_filter",
+                "condition": "or_end",
+            },
         ]
 
-        payload = {
-            "custom_filter": json.dumps(inner_filter)
-        }
+        payload = {"custom_filter": json.dumps(inner_filter)}
 
         return {
             "method": "POST",
             "url": url,
             "json_payload": payload,  # Note: we use 'json_payload' to match our client arg
-            "headers": WTTRoutes._BASE_HEADERS
+            "headers": WTTRoutes._BASE_HEADERS,
+        }
+
+    @staticmethod
+    def get_event_matches_route(event_id: Union[int, str]):
+        """
+        Gets the matches for a given event id - these match payloads are then used
+        to scrape the match details from the WTT API
+
+        Args:
+            event_id (Union[int, str]): The event id to get the matches for.
+
+        Returns:
+            dict: A dictionary containing the method, url, payload, and headers.
+        """
+
+        return {
+            "url": "https://wttwebsiteprodapi-liveevents.trafficmanager.net/api/cms/GetOfficialResult",
+            "method": "GET",
+            "params": {"EventId": str(event_id), "DocumentCode": "TTE"},
+            "headers": {
+                "Accept": "application/json, text/plain, */*",
+                "Referer": "https://www.worldtabletennis.com/",
+                "Origin": "https://www.worldtabletennis.com",
+                "User-Agent": "Mozilla/5.0 (Linux; Android 11.0; Surface Duo) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36",
+                "secapimkey": "S_WTT_882jjh7basdj91834783mds8j2jsd81",
+            },
         }

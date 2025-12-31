@@ -1,6 +1,5 @@
 import asyncio
 import httpx
-import sys
 import time
 from typing import Tuple
 from datetime import datetime
@@ -8,30 +7,28 @@ from tqdm.asyncio import tqdm
 from pathlib import Path
 
 
-sys.path.append(".")
-
 from src.utils.api_client import TTStatsClient
 from src.utils.routes import WTTRoutes
-from src.utils.io_handler import save_raw_json, file_exists, get_event_count_from_file
+from src.utils.io_handler import save_raw_json, json_exists, get_event_count_from_file
 from src.config import RAW_EVENTS_DIR
 
 
-current_year = datetime.now().year
+def get_years_to_scrape(output_dir: Path, start_yr: int = 2021) -> list[int]:
+    """
+    Determines which years to scrape based on existing data and the current year.
+    """
+    current_year = datetime.now().year
+    # end_year is current + 2 to see future events out of interest.
+    all_years = range(start_yr, current_year + 2)
 
-# 2021 is the earliest year where data is available from WTT API
-start_year = 1926
-# scrape until the year after the current year
-end_year = current_year + 1
-end_year = 1966
+    years_to_scrape = []
+    for year in all_years:
+        filename = f"events_{year}.json"
 
-# all years = range(start_year, end_year
-all_years = list(range(start_year, end_year + 1))
-years_to_scrape = [
-    year
-    for year in all_years
-    if not file_exists(filename=f"events_{year}.json", folder=RAW_EVENTS_DIR)
-    or year >= current_year
-]
+        if not json_exists(output_dir, filename) or year >= current_year:
+            years_to_scrape.append(year)
+
+    return years_to_scrape
 
 
 async def process_year(
@@ -56,7 +53,6 @@ async def process_year(
         Tuple[int, int]: A tuple containing the total number of events found and the number of new events added.
     """
 
-    print(f"\n🔹 [DEBUG] Starting process_year for {year}")  # PRINT 1
     async with semaphore:
         route = WTTRoutes.get_events_year_route(year)
 
@@ -72,17 +68,12 @@ async def process_year(
                 headers=route["headers"],
             )
 
-            print(f"🔹 [DEBUG] Raw Data Type: {type(data)}")
-            print(f"🔹 [DEBUG] Raw Data Content: {data}")
-
             filename = f"events_{year}.json"
             save_raw_json(data, output_dir, filename)
 
             new_count = 0
             if isinstance(data, list) and len(data) > 0:
                 new_count = len(data[0].get("rows", []))
-
-            print(f"🔹 [DEBUG] Calculated new_count: {new_count}")
 
             added = max(0, new_count - old_count)
             if added > 0:
@@ -92,12 +83,11 @@ async def process_year(
             return new_count, added
 
         except Exception as e:
-            print(f"\n🐛 DEBUG EXCEPTION: {type(e).__name__} :: {e}")
             tqdm.write(f"❌ Error on {year}: {e}")
             return 0, 0
 
 
-async def run_event_scraper() -> None:
+async def run_event_scraper(years_to_scrape: list[int]) -> None:
     """
     Runs the event scraper which scrapes all available event data from the WTT API.
 
@@ -147,4 +137,5 @@ async def run_event_scraper() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(run_event_scraper())
+    years_to_scrape = get_years_to_scrape(output_dir=RAW_EVENTS_DIR)
+    asyncio.run(run_event_scraper(years_to_scrape))
