@@ -3,10 +3,11 @@ import httpx
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, NamedTuple
 from tqdm.asyncio import tqdm
 import time
 from typing import Union
+import re
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -14,7 +15,12 @@ from tenacity import (
     retry_if_exception_type,
 )
 
-from src.config import RAW_EVENTS_DIR, RAW_EVENT_MATCHES_DIR
+from src.config import (
+    RAW_EVENTS_DIR,
+    RAW_EVENT_MATCHES_DIR,
+    EXCLUDED_EVENT_TERMS,
+    AGE_LIMIT_REGEX,
+)
 from src.utils.api_client import TTStatsClient
 from src.utils.routes import WTTRoutes
 from src.utils.io_handler import save_raw_json, json_exists
@@ -26,6 +32,113 @@ from src.utils.io_handler import save_raw_json, json_exists
 current_year = datetime.now().year
 current_date = datetime.now()
 ongoing_cut_off_date = current_date + timedelta(days=1)
+
+
+class EventTaskAnalysis(NamedTuple):
+    queue: List[Tuple[int, int]]  # The list of (event_id, year) to scrape
+    total_found: int  # Total raw events in files
+    total_senior: int  # Total after Senior filter
+    total_skipped: int
+
+
+def is_senior_event(event_name: str) -> bool:
+    """
+    Checks if an event name is a senior event.
+
+    The function takes an event name, converts it to lowercase, and checks
+    if any of the excluded event terms are present. If not, it checks if the
+    event name matches the age limit regex. If it does not match, the
+    function returns True, indicating that the event is a senior event.
+
+    Args:
+        event_name (str): The name of the event to check.
+
+    Returns:
+        bool: True if the event is a senior event, False otherwise.
+    """
+    if not event_name:
+        return False
+
+    name_lower = event_name.lower()
+    if any(term in name_lower for term in EXCLUDED_EVENT_TERMS):
+        return False
+    # regex match for age limit gives True that is not a senior event
+    # return not the bool to get the opposite result
+    return not bool(re.search(AGE_LIMIT_REGEX, name_lower))
+    # Total filtered out (Youth/Junior)
+
+
+def get_event_tasks(
+    events_dir: Path,
+    event_matches_dir: Path,
+    current_year: int,
+    ongoing_cut_off_date: datetime,
+) -> EventTaskAnalysis:
+    """
+    Analyse the event tasks and return the total number of events to scrape.
+    """
+    events_to_scrape = []
+    total_events = 0
+    total_senior = 0
+
+    event_files = sorted(events_dir.glob("events_*.json"))
+    for event_file in event_files:
+        try:
+            year = int(event_file.stem.split("_")[1])
+        except (IndexError, ValueError):
+            continue
+
+        with open(event_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        if not isinstance(data, list):
+            continue
+
+        events_list = data[0].get("rows", [])
+
+        total_events += len(events_list)
+
+        for event in events_list:
+            event_id = event.get("EventId")
+            event_name = event.get("EventName")
+            end_date_str = event.get("EndDateTime")
+
+            if not event_id or not event_name or not end_date_str:
+                continue
+
+            if not is_senior_event(event_name):
+                continue
+
+            total_senior += 1
+
+            target_dir = event_matches_dir / str(year)
+            target_file = target_dir / f"event_matches_{event_id}.json"
+
+            should_scrape = False
+
+            # year check - don't scrape future events
+            if year > current_year:
+                should_scrape = False
+            # file check - if no file, should scrape
+            elif not target_file.exists():
+                should_scrape = True
+            # end date check - if end date is in the future, should scrape
+            # this flags ongoing events with a 1 day buffer
+            else:
+                end_date = datetime.strptime(end_date_str, "%Y-%m-%dT%H:%M:%S")
+                end_date_safe = end_date + timedelta(days=2)
+                if end_date_safe > ongoing_cut_off_date:
+                    should_scrape = True
+
+            if should_scrape:
+                events_to_scrape.append((event_id, year))
+
+    return EventTaskAnalysis(
+        queue=events_to_scrape,
+        total_found=total_events,
+        total_senior=total_senior,
+        total_skipped=total_events - total_senior,
+    )
 
 
 def get_event_matches_to_scrape(
@@ -70,8 +183,13 @@ def get_event_matches_to_scrape(
 
         for event in events_list:
             event_id = event.get("EventId")
+            event_name = event.get("EventName")
             end_date = event.get("EndDateTime")
-            if not event_id or not end_date:
+            #
+            if not event_id or not event_name or not end_date:
+                continue
+
+            if not is_senior_event(event_name):
                 continue
 
             target_dir = event_matches_dir / str(year)
@@ -98,7 +216,7 @@ def get_event_matches_to_scrape(
 
 
 @retry(
-    stop=stop_after_attempt(3),
+    stop=stop_after_attempt(5),
     wait=wait_exponential(multiplier=1, min=2, max=10),
     retry=retry_if_exception_type((httpx.RequestError, httpx.TimeoutException)),
     reraise=True,
@@ -190,23 +308,32 @@ async def run_event_matches_scraper() -> None:
     start_time = time.time()
     semaphore = asyncio.Semaphore(50)
 
-    # 1. Get the list of work to do
-    print("Scanning files for work...")
-    events_to_scrape = get_event_matches_to_scrape(
+    print("Obtaining Tasks ...")
+
+    event_tasks = get_event_tasks(
         events_dir=RAW_EVENTS_DIR,
         event_matches_dir=RAW_EVENT_MATCHES_DIR,
-        ongoing_cut_off_date=ongoing_cut_off_date,
         current_year=current_year,
+        ongoing_cut_off_date=ongoing_cut_off_date,
     )
 
-    print(f"Found {len(events_to_scrape)} events to process.")
+    # 1. Get the list of work to do
+    print("\n--- 📋 Pre-Scrape Summary ---")
+    print(f"Total Events Found:       {event_tasks.total_found}")
+    print(f"Total Senior Events:      {event_tasks.total_senior}")
+    print(f"Filtered (Youth/Vet):     {event_tasks.total_skipped}")
+    print(f"Events Pending Scrape:    {len(event_tasks.queue)}")
+    print("----------------------------\n")
 
+    if not event_tasks.queue:
+        print("No tasks to run.")
+        return
     async with httpx.AsyncClient(timeout=30.0) as http_client:
         tasks = []
 
         # 2. Create Tasks
         # Loop through the DATA (event_id, year), not the empty task list
-        for event_id, year in events_to_scrape:
+        for event_id, year in event_tasks.queue:
             task = process_event_matches(
                 stats_client, http_client, event_id, year, semaphore
             )

@@ -1,5 +1,6 @@
 # src/config.py
 from pathlib import Path
+import re
 
 # Setup directory structure
 # This has caused some issues with importing in other modules - not sure why
@@ -29,3 +30,23 @@ for directory in [
     RAW_EVENT_MATCHES_DIR,
 ]:
     directory.mkdir(parents=True, exist_ok=True)
+
+
+## Event filtering
+EXCLUDED_EVENT_TERMS = {
+    "cadet",
+    "junior",
+    "youth",
+    "under",
+    "girls",
+    "boys",  # Age groups
+    "para",
+    "paralympic",  # Para table tennis
+    "vet",
+    "veteran",  # Senior/ Veteran table tennis
+}
+
+# Pattern to remove u21 / u19 etc
+AGE_LIMIT_PATTERN = r"\bu\d{2}\b"
+# Regex to remove u21 / u19 that is not case sensitive
+AGE_LIMIT_REGEX = re.compile(AGE_LIMIT_PATTERN, re.IGNORECASE)
