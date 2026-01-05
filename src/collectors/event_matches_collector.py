@@ -7,7 +7,6 @@ from typing import List, Tuple, NamedTuple
 from tqdm.asyncio import tqdm
 import time
 from typing import Union
-import re
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -18,19 +17,21 @@ from tenacity import (
 from src.config import (
     RAW_EVENTS_DIR,
     RAW_EVENT_MATCHES_DIR,
-    EXCLUDED_EVENT_TERMS,
-    AGE_LIMIT_REGEX,
 )
 from src.utils.api_client import TTStatsClient
 from src.utils.routes import WTTRoutes
 from src.utils.io_handler import save_raw_json, json_exists
-
+from src.utils.helper_logic import (
+    get_event_date_status,
+    is_senior_event,
+)
 
 # Get the current year and date
 # Use an offset of 1 day for safe current date to account for potential timezone differences
 # The date is used to filter ongoing events that need to be re-scraped
 current_year = datetime.now().year
 current_date = datetime.now()
+current_date_offset = current_date + timedelta(days=1)
 ongoing_cut_off_date = current_date + timedelta(days=1)
 
 
@@ -39,33 +40,6 @@ class EventTaskAnalysis(NamedTuple):
     total_found: int  # Total raw events in files
     total_senior: int  # Total after Senior filter
     total_skipped: int
-
-
-def is_senior_event(event_name: str) -> bool:
-    """
-    Checks if an event name is a senior event.
-
-    The function takes an event name, converts it to lowercase, and checks
-    if any of the excluded event terms are present. If not, it checks if the
-    event name matches the age limit regex. If it does not match, the
-    function returns True, indicating that the event is a senior event.
-
-    Args:
-        event_name (str): The name of the event to check.
-
-    Returns:
-        bool: True if the event is a senior event, False otherwise.
-    """
-    if not event_name:
-        return False
-
-    name_lower = event_name.lower()
-    if any(term in name_lower for term in EXCLUDED_EVENT_TERMS):
-        return False
-    # regex match for age limit gives True that is not a senior event
-    # return not the bool to get the opposite result
-    return not bool(re.search(AGE_LIMIT_REGEX, name_lower))
-    # Total filtered out (Youth/Junior)
 
 
 def get_event_tasks(
@@ -101,9 +75,14 @@ def get_event_tasks(
         for event in events_list:
             event_id = event.get("EventId")
             event_name = event.get("EventName")
-            end_date_str = event.get("EndDateTime")
 
-            if not event_id or not event_name or not end_date_str:
+            event_date_status = get_event_date_status(event)
+
+            data_exists = json_exists(
+                event_matches_dir, f"event_matches_{event_id}.json"
+            )
+
+            if not event_id or not event_name or not event_date_status:
                 continue
 
             if not is_senior_event(event_name):
@@ -111,24 +90,15 @@ def get_event_tasks(
 
             total_senior += 1
 
-            target_dir = event_matches_dir / str(year)
-            target_file = target_dir / f"event_matches_{event_id}.json"
-
             should_scrape = False
 
-            # year check - don't scrape future events
-            if year > current_year:
-                should_scrape = False
-            # file check - if no file, should scrape
-            elif not target_file.exists():
+            # if event is ongoing, re-scrape if data is missing
+            if event_date_status == "ongoing":
                 should_scrape = True
-            # end date check - if end date is in the future, should scrape
-            # this flags ongoing events with a 1 day buffer
-            else:
-                end_date = datetime.strptime(end_date_str, "%Y-%m-%dT%H:%M:%S")
-                end_date_safe = end_date + timedelta(days=2)
-                if end_date_safe > ongoing_cut_off_date:
-                    should_scrape = True
+
+            # if event is completed, re-scrape if data is missing
+            elif event_date_status == "completed" and not data_exists:
+                should_scrape = True
 
             if should_scrape:
                 events_to_scrape.append((event_id, year))
@@ -287,7 +257,9 @@ async def process_event_matches(
             return count, added
 
         except Exception as e:
-            tqdm.write(f"❌ Error scraping Event {event_id}: {e}")
+            tqdm.write(
+                f"❌ Error scraping Event {event_id}: {type(e).__name__} - {str(e)}"
+            )
             return 0, 0
 
 
