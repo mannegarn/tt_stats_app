@@ -1,5 +1,6 @@
 import json
-from src.utils.io_handler import save_raw_json, json_exists, get_event_count_from_file
+from src.utils.io_handler import save_raw_json, json_exists
+from src.utils.helper_logic import get_event_count_from_file
 import pytest
 
 
@@ -56,7 +57,7 @@ def test_json_exists(tmp_path):
     assert json_exists(tmp_path, filename) is True
 
 
-def test_json_exists_non_json_file(tmp_path):
+def test_json_exists_invalid_json_file(tmp_path):
     """
     Tests the file_exists function when the file is not a valid JSON file.
 
@@ -67,7 +68,25 @@ def test_json_exists_non_json_file(tmp_path):
         The function returns False when the file is not a valid JSON file.
     """
     filename = "test_file.json"
-    test_data = "This is not a valid JSON file."
+    test_data = "{This is not a valid JSON file.}"
+    filepath = tmp_path / filename
+    filepath.write_text(test_data)
+
+    assert json_exists(tmp_path, filename) is False
+
+
+def test_json_exists_non_json_file(tmp_path):
+    """
+    Tests the file_exists function when the file is not a JSON file.
+
+    Args:
+        tmp_path (Path): The temporary directory to use for creating the file.
+
+    Asserts:
+        The function returns False when the file is not a JSON file.
+    """
+    filename = "test_file.txt"
+    test_data = "This is not a JSON file."
     filepath = tmp_path / filename
     filepath.write_text(test_data)
 

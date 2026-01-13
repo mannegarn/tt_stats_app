@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from src.collectors.event_collector import process_year
 from src.utils.api_client import TTStatsClient
-from src.utils.io_handler import get_event_count_from_file
+from src.utils.helper_logic import get_event_count_from_file
 
 
 @pytest.mark.asyncio

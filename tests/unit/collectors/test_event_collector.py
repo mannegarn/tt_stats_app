@@ -6,21 +6,43 @@ import json
 from pathlib import Path
 from src.collectors.event_collector import process_year, get_years_to_scrape
 from src.utils.api_client import TTStatsClient
-from src.config import RAW_EVENTS_DIR
-from datetime import datetime
 
 
-def test_get_years_to_scrape():
+@pytest.mark.parametrize(
+    "start_yr, existing_files, expected_result",
+    [
+        # Scenario 1: Empty Dir
+        (2023, [], [2023, 2024, 2025, 2026, 2027]),
+        # Scenario 2: Historic file exists (2023) -> Should NOT be in results
+        (2023, ["events_2023.json"], [2024, 2025, 2026, 2027]),
+        # Scenario 3: Current year file exists (2026) -> Should STILL be in results
+        (2025, ["events_2026.json"], [2025, 2026, 2027]),
+    ],
+)
+def test_get_years_to_scrape(
+    tmp_path: Path,
+    start_yr,
+    existing_files: list[str],
+    expected_result: list[int],
+    current_year=2026,
+):
     """
     Tests the get_years_to_scrape function by asserting that the
-    years returned range matches the expected range from 2021 to the current year plus 2.
+    years returned range matches the expected from start year to the current year plus 1.
     Args:
-        None
+        tmp_path (Path): The path to the temporary directory.
     Asserts:
         The function returns a list of years from 2021 to the current year plus 2.
     """
-    years_to_scrape = get_years_to_scrape(RAW_EVENTS_DIR)
-    assert years_to_scrape == range(2021, datetime.now().year + 2)
+
+    for file in existing_files:
+        filepath = tmp_path / file
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump({"dummy key": "dummy data"}, f, indent=4)
+
+    years_to_scrape = get_years_to_scrape(tmp_path, start_yr, current_year)
+
+    assert years_to_scrape == expected_result
 
 
 @pytest.mark.parametrize(

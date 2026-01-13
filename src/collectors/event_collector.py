@@ -5,21 +5,23 @@ from typing import Tuple
 from datetime import datetime
 from tqdm.asyncio import tqdm
 from pathlib import Path
-
-
 from src.utils.api_client import TTStatsClient
 from src.utils.routes import WTTRoutes
-from src.utils.io_handler import save_raw_json, json_exists, get_event_count_from_file
+from src.utils.io_handler import save_raw_json, json_exists
+from src.utils.helper_logic import get_event_count_from_file
 from src.config import RAW_EVENTS_DIR
 
 
-def get_years_to_scrape(output_dir: Path, start_yr: int = 2021) -> list[int]:
+def get_years_to_scrape(
+    output_dir: Path, start_yr: int = 2021, current_year: int = datetime.now().year
+) -> list[int]:
     """
     Determines which years to scrape based on existing data and the current year.
     """
-    current_year = datetime.now().year
+
     # end_year is current + 2 to see future events out of interest.
-    all_years = range(start_yr, current_year + 2)
+    end_year = current_year + 1
+    all_years = range(start_yr, end_year + 1)
 
     years_to_scrape = []
     for year in all_years:
